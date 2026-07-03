@@ -3,6 +3,7 @@
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import re
 import numpy as np
 import pandas as pd
 
@@ -23,19 +24,35 @@ def plot_demand_seasonality(demand: pd.DataFrame):
 
 
 def plot_routing_heatmap(flows: pd.DataFrame):
-    fig, ax = plt.subplots(figsize=(6.5, 4))
-    im = ax.imshow(flows.values, cmap="Blues", vmin=0, vmax=1)
-    ax.set_xticks(range(len(flows.columns)), flows.columns, rotation=20)
-    ax.set_yticks(range(len(flows.index)), flows.index)
+    fig, ax = plt.subplots(figsize=(9, 5))
+    im = ax.imshow(flows.values, cmap="Blues", vmin=0, vmax=1, aspect="auto")
+
+    def split_camel(t):
+        return re.sub(r"(?<=[a-z])(?=[A-Z])", " ", t)
+
+    # "FC_A_Midlands" -> "FC A\n(Midlands)"; "R2_SouthEast" -> "South East"
+    xlabels = []
+    for c in flows.columns:
+        parts = c.split("_")
+        xlabels.append(f"{parts[0]} {parts[1]}\n({split_camel(parts[2])})")
+    ylabels = [split_camel(r.split("_", 1)[1]) for r in flows.index]
+
+    ax.set_xticks(range(len(xlabels)))
+    ax.set_xticklabels(xlabels, fontsize=12)
+    ax.set_yticks(range(len(ylabels)))
+    ax.set_yticklabels(ylabels, fontsize=12)
+
     for i in range(flows.shape[0]):
         for j in range(flows.shape[1]):
             v = flows.values[i, j]
             ax.text(j, i, f"{v:.2f}", ha="center", va="center",
-                    color="white" if v > 0.5 else "black", fontsize=9)
-    ax.set_title("MNL-estimated P(FC serves order | region) - current policy")
-    fig.colorbar(im, shrink=0.8)
-    plt.tight_layout()
-    plt.savefig(f"{FIG}/routing_probabilities.png", dpi=150)
+                    color="white" if v > 0.5 else "black", fontsize=12)
+
+    ax.set_title("Probability each FC serves an order, by region\n(MNL estimate of current routing policy)",
+                 fontsize=13, pad=10)
+    cbar = fig.colorbar(im, shrink=0.9, pad=0.02)
+    cbar.set_label("Probability", fontsize=11)
+    plt.savefig(f"{FIG}/routing_probabilities.png", dpi=150, bbox_inches="tight")
     plt.close()
 
 
