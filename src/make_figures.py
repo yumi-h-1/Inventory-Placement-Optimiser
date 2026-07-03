@@ -1,105 +1,119 @@
-"""Generate all figures for the README into results/figures/."""
+"""Generate all README figures into results/figures/."""
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import re
 import numpy as np
 import pandas as pd
 
-from simulate_demand import FCS, REGIONS
-
 FIG = "results/figures"
+HUB_LIST = ["HUB_SaoPaulo", "HUB_South", "HUB_MG_RJ"]
+HUB_LABEL = {"HUB_SaoPaulo": "Sao Paulo hub", "HUB_South": "South hub",
+             "HUB_MG_RJ": "MG/RJ hub"}
 
 
-def plot_demand_seasonality(demand: pd.DataFrame):
-    weekly = demand.groupby(["week", "category"])["demand"].sum().unstack()
-    ax = weekly.plot(figsize=(9, 4), linewidth=1.6)
-    ax.set(title="Simulated weekly demand by category (2 years)",
-           xlabel="Week", ylabel="Units")
-    ax.legend(title="Category")
-    plt.tight_layout()
-    plt.savefig(f"{FIG}/demand_seasonality.png", dpi=150)
+def plot_demand_and_forecast(demand: pd.DataFrame, holdout: pd.DataFrame):
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4))
+
+    weekly = demand.groupby(["week", "product_group"]).demand.sum().unstack()
+    weekly.plot(ax=axes[0], linewidth=1.4)
+    axes[0].set(title="Olist weekly demand by product group",
+                xlabel="", ylabel="Items per week")
+    axes[0].legend(title="", fontsize=9)
+
+    agg = holdout.groupby("week")[["demand", "forecast"]].sum()
+    axes[1].plot(agg.index, agg.demand, marker="o", label="actual")
+    axes[1].plot(agg.index, agg.forecast, marker="s", label="forecast")
+    axes[1].set(title="Holdout weeks: total demand, forecast vs actual",
+                xlabel="", ylabel="Items per week")
+    axes[1].tick_params(axis="x", rotation=30)
+    axes[1].legend()
+
+    plt.savefig(f"{FIG}/demand_and_forecast.png", dpi=150, bbox_inches="tight")
     plt.close()
 
 
 def plot_routing_heatmap(flows: pd.DataFrame):
+    flows = flows[HUB_LIST]
     fig, ax = plt.subplots(figsize=(9, 5))
     im = ax.imshow(flows.values, cmap="Blues", vmin=0, vmax=1, aspect="auto")
 
-    def split_camel(t):
-        return re.sub(r"(?<=[a-z])(?=[A-Z])", " ", t)
-
-    # "FC_A_Midlands" -> "FC A\n(Midlands)"; "R2_SouthEast" -> "South East"
-    xlabels = []
-    for c in flows.columns:
-        parts = c.split("_")
-        xlabels.append(f"{parts[0]} {parts[1]}\n({split_camel(parts[2])})")
-    ylabels = [split_camel(r.split("_", 1)[1]) for r in flows.index]
-
-    ax.set_xticks(range(len(xlabels)))
-    ax.set_xticklabels(xlabels, fontsize=12)
-    ax.set_yticks(range(len(ylabels)))
-    ax.set_yticklabels(ylabels, fontsize=12)
+    ax.set_xticks(range(len(HUB_LIST)))
+    ax.set_xticklabels([HUB_LABEL[h].replace(" hub", "\nhub") for h in HUB_LIST],
+                       fontsize=12)
+    ax.set_yticks(range(len(flows.index)))
+    ax.set_yticklabels(flows.index, fontsize=12)
+    ax.set_ylabel("Customer state", fontsize=11)
 
     for i in range(flows.shape[0]):
         for j in range(flows.shape[1]):
             v = flows.values[i, j]
             ax.text(j, i, f"{v:.2f}", ha="center", va="center",
-                    color="white" if v > 0.5 else "black", fontsize=12)
+                    color="white" if v > 0.5 else "black", fontsize=11)
 
-    ax.set_title("Probability each FC serves an order, by region\n(MNL estimate of current routing policy)",
+    ax.set_title("Probability each hub ships an order, by customer state\n"
+                 "(MNL estimate of the current marketplace policy)",
                  fontsize=13, pad=10)
     cbar = fig.colorbar(im, shrink=0.9, pad=0.02)
-    cbar.set_label("Probability", fontsize=11)
+    cbar.set_label("Probability")
     plt.savefig(f"{FIG}/routing_probabilities.png", dpi=150, bbox_inches="tight")
     plt.close()
 
 
-def plot_placement(placement: pd.DataFrame):
-    by_fc = placement.groupby(["fc", "category"])["units"].sum().unstack()
-    ax = by_fc.plot(kind="bar", stacked=True, figsize=(7, 4))
-    caps = [FCS[f]["capacity"] for f in by_fc.index]
-    ax.scatter(range(len(caps)), caps, marker="_", s=600, color="red",
-               label="capacity", zorder=3)
-    ax.set(title="Optimised peak-week inventory placement vs FC capacity",
-           xlabel="", ylabel="Units")
+def plot_placement(placement: pd.DataFrame, flows: pd.DataFrame,
+                   plan: pd.DataFrame):
+    cur_share = (plan.merge(flows.reset_index(), on="customer_state")
+                 .pipe(lambda d: pd.Series(
+                     {h: (d.demand * d[h]).sum() for h in HUB_LIST})))
+    opt_share = placement.groupby("hub").units.sum()[HUB_LIST]
+
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    xs = np.arange(len(HUB_LIST))
+    ax.bar(xs - 0.18, cur_share.values, width=0.36, label="Current policy")
+    ax.bar(xs + 0.18, opt_share.values, width=0.36, label="Optimised plan")
+    ax.set_xticks(xs)
+    ax.set_xticklabels([HUB_LABEL[h] for h in HUB_LIST], fontsize=11)
+    ax.set_ylabel("Items per planning week")
+    ax.set_title("Weekly volume by hub: current policy vs optimised placement",
+                 fontsize=12)
     ax.legend()
-    plt.xticks(rotation=0)
-    plt.tight_layout()
-    plt.savefig(f"{FIG}/optimal_placement.png", dpi=150)
+    plt.savefig(f"{FIG}/hub_volumes.png", dpi=150, bbox_inches="tight")
     plt.close()
 
 
-def plot_scenarios(scen: pd.DataFrame):
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-    axes[0].hist(scen["saving_pct"], bins=25, color="#3b6ea5", edgecolor="white")
-    axes[0].axvline(scen["saving_pct"].mean(), color="red", linestyle="--",
-                    label=f"mean {scen['saving_pct'].mean():.1f}%")
-    axes[0].set(title="Cost saving vs current policy\n(200 demand scenarios)",
+def plot_uncertainty(scen: pd.DataFrame, sens: pd.DataFrame):
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4))
+
+    axes[0].hist(scen.saving_pct, bins=25, color="#3b6ea5", edgecolor="white")
+    axes[0].axvline(scen.saving_pct.mean(), color="red", linestyle="--",
+                    label=f"mean {scen.saving_pct.mean():.1f}%")
+    axes[0].set(title="Cost saving vs current policy\n(200 bootstrap demand scenarios)",
                 xlabel="Saving (%)", ylabel="Scenarios")
     axes[0].legend()
 
-    breach_rate = 100 * scen["policy_capacity_breach"].mean()
-    axes[1].bar(["Current policy", "Optimised plan"], [breach_rate, 0.0],
-                color=["#c0504d", "#4f8a4f"])
-    axes[1].set(title="Scenarios breaching FC capacity (%)",
-                ylabel="% of scenarios")
-    for i, v in enumerate([breach_rate, 0.0]):
-        axes[1].text(i, v + 0.8, f"{v:.0f}%", ha="center")
-    plt.tight_layout()
-    plt.savefig(f"{FIG}/scenario_analysis.png", dpi=150)
+    axes[1].plot(100 * sens.regional_capacity_frac, sens.saving_pct,
+                 marker="o", color="#4f8a4f")
+    axes[1].set(title="Saving vs regional hub capacity",
+                xlabel="South + MG/RJ capacity (% of headroom level)",
+                ylabel="Saving (%)")
+    axes[1].grid(alpha=0.3)
+
+    plt.savefig(f"{FIG}/scenario_analysis.png", dpi=150, bbox_inches="tight")
     plt.close()
 
 
 if __name__ == "__main__":
-    demand = pd.read_csv("data/weekly_demand.csv")
-    flows = pd.read_csv("data/routing_probabilities.csv", index_col="region")
-    placement = pd.read_csv("data/optimal_placement.csv")
-    scen = pd.read_csv("data/scenario_results.csv")
+    demand = pd.read_csv("data/processed/weekly_demand.csv", parse_dates=["week"])
+    holdout = pd.read_csv("data/processed/forecast_holdout.csv", parse_dates=["week"])
+    flows = pd.read_csv("data/processed/routing_probabilities.csv",
+                        index_col="customer_state")
+    placement = pd.read_csv("data/processed/optimal_placement.csv")
+    plan = pd.read_csv("data/processed/planning_demand.csv")
+    scen = pd.read_csv("data/processed/scenario_results.csv")
+    sens = pd.read_csv("data/processed/capacity_sensitivity.csv")
 
-    plot_demand_seasonality(demand)
+    plot_demand_and_forecast(demand, holdout)
     plot_routing_heatmap(flows)
-    plot_placement(placement)
-    plot_scenarios(scen)
-    print("Figures written to", FIG)
+    plot_placement(placement, flows, plan)
+    plot_uncertainty(scen, sens)
+    print("figures written to", FIG)
