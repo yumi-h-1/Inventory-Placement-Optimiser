@@ -19,11 +19,6 @@ End-to-end supply-chain planning project on **real data** (Olist Brazilian e-com
 
 All of this is served as a **FastAPI service in Docker**.
 
-
-> Built while preparing for network-planning-optimisation data science roles, to practise the
-> model families this domain runs on: forecasting, discrete-choice statistical models and
-> mathematical optimisation — plus the delivery layer (API, Docker, SQL) they ship in.
-
 ---
 
 ## Pipeline
