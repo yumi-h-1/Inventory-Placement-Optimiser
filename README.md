@@ -10,7 +10,7 @@
 End-to-end supply-chain planning project on **real data** (Olist Brazilian e-commerce,
 ~91k delivered order items, 2016–2018). Three models do the planning.
 
-1. a **ridge-regression forecaster** predicts weekly demand — order items per
+1. a **ridge-regression forecaster** predicts weekly demand: order items per
    customer state × product group (32 series: 8 Brazilian states × 4 groups),
 2. a **multinomial logistic regression (MNL)** describes how orders are routed across
    the fulfilment network today,
