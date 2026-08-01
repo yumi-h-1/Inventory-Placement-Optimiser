@@ -19,6 +19,20 @@ End-to-end supply-chain planning project on **real data** (Olist Brazilian e-com
 
 All of this is served as a **FastAPI service in Docker**.
 
+## Goal
+
+Show, on real order-level data, that a network-planning team can move from *describing*
+current fulfilment behaviour to *prescribing* a better one — and that the improvement is
+robust rather than a fitting artefact:
+
+1. **Describe** — recover today's implicit routing policy with a discrete-choice model,
+   and quantify how far it is from a geographically sensible one.
+2. **Prescribe** — measure how much cost that policy leaves on the table, by solving for
+   the placement that minimises shipping + holding cost under hub capacity.
+3. **Stress-test** — confirm the saving survives demand-forecast error and different
+   capacity assumptions, then expose the optimiser as a service a planning team could
+   actually call with its own assumptions.
+
 ---
 
 ## Pipeline
